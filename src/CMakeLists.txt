@@ -263,6 +263,8 @@ set(CCL_SRC
     ccl_empty_kvs_attr.cpp
     ccl_empty_stream.cpp
 
+    dg2/dg2_allreduce.cpp
+
     ${EXTENSIONS_SRC})
 
 if (ENABLE_STUB_BACKEND)

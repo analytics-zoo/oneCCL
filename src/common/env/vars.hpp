@@ -579,6 +579,7 @@ constexpr const char* CCL_BUFFER_CACHE = "CCL_BUFFER_CACHE";
 constexpr const char* CCL_STRICT_ORDER = "CCL_STRICT_ORDER";
 constexpr const char* CCL_STAGING_BUFFER = "CCL_STAGING_BUFFER";
 constexpr const char* CCL_OP_SYNC = "CCL_OP_SYNC";
+constexpr const char* CCL_DG2_ALLREDUCE = "CCL_DG2_ALLREDUCE";
 
 constexpr const char* CCL_CHUNK_COUNT = "CCL_CHUNK_COUNT";
 constexpr const char* CCL_MIN_CHUNK_SIZE = "CCL_MIN_CHUNK_SIZE";

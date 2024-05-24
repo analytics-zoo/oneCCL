@@ -62,6 +62,8 @@
 #include "sched/sched_timer.hpp"
 #include "unordered_coll/unordered_coll.hpp"
 
+#include "dg2/dg2_allreduce.hpp"
+
 #if defined(CCL_ENABLE_SYCL) && defined(CCL_ENABLE_ZE)
 #include "coll/algorithms/utils/sycl_selection.hpp"
 #include "coll/algorithms/allreduce/sycl/allreduce_sycl.hpp"
@@ -126,6 +128,16 @@ ccl_request* exec_single_rank_coll(const ccl_coll_param& param) {
 #endif // CCL_ENABLE_SYCL && CCL_ENABLE_ZE
     CCL_THROW_IF_NOT(
         "single rank case for: ", ccl_coll_type_to_str(param.ctype), "is not supported");
+    return nullptr;
+}
+
+static ccl_request* ccl_dg2_allreduce_impl(ccl_coll_param& param, const ccl_coll_attr& in_attr)
+{
+    dg2_init(param);
+
+    dg2_allreduce(param.send_bufs[0], param.recv_bufs[0],
+                  param.count, param.dtype, param.reduction, param.comm);
+
     return nullptr;
 }
 
@@ -1181,12 +1193,24 @@ ccl_request* ccl_allreduce_impl(const void* send_buf,
                                 ccl_comm* comm,
                                 const ccl_stream* stream,
                                 const std::vector<ccl::event>& deps) {
+    ccl_request *req;
+
     ccl_coll_param param = ccl_coll_param::create_allreduce_param(
         send_buf, recv_buf, count, dtype, reduction, attr, comm, stream, deps);
 
-    auto req = ccl_coll_create(param, attr);
-    LOG_DEBUG(
-        "coll ", ccl_coll_type_to_str(param.ctype), " created, req ", stream, " count ", count);
+    std::shared_ptr<atl_base_comm> atl_comm = comm->get_node_comm().get()->get_atl_comm();
+
+    if (ccl::global_data::env().enable_dg2_allreduce
+        && (atl_comm->get_size() >= 2) && (atl_comm->get_size() <= DG2_NUM)
+        && ((dtype == ccl::datatype::float16) || (dtype == ccl::datatype::float32) || (dtype == ccl::datatype::int32))) {
+        req = ccl_dg2_allreduce_impl(param, attr);
+    }
+    else {
+        req = ccl_coll_create(param, attr);
+    }
+
+    LOG_DEBUG("coll ", ccl_coll_type_to_str(param.ctype), " created, req ", req, " count ", count);
+
     return req;
 }
 

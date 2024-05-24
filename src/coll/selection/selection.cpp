@@ -393,6 +393,11 @@ bool ccl_can_use_topo_algo(const ccl_selector_param& param) {
             " is not supported for family1");
     }
 
+    if (ccl::global_data::env().enable_dg2_allreduce) {
+        LOG_DEBUG("topo algorithm is not supported by DG2");
+        return false;
+    }
+
     if (checkers::is_unknown_device_family(param)) {
         LOG_WARN("Applying topo algorithm, but device family is not recognized");
 #ifndef CCL_BF16_GPU_TRUNCATE
