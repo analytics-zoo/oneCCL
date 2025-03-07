@@ -527,30 +527,9 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
                 auto chunk_sz = req_workitems * LS_SZ;         /* LS_SZ bytes per work-item */
                 auto chunk_with_pattern = sg_sz * LS_SZ;       /* aligned to 256B */
 
-                /* items will be assigned to each rank */
-                auto per_rank_items = (unreduced + (local_world_size * LS_SZ - 1)) / (local_world_size * LS_SZ);
-                auto req_workgroups = (per_rank_items + (workgroup_available_items - 1)) / workgroup_available_items;
-                auto req_subgroups = 0;
+		auto work_left = unreduced - sg_id * local_world_size * chunk_sz;
 
-                if (req_workgroups >= g_sz/l_sz) {
-                    req_workgroups = g_sz/l_sz;
-                } else {
-                    if (group_id == (req_workgroups - 1)) {
-                        req_subgroups = (per_rank_items + (sg_sz - 1)) / (sg_sz - 1);
-
-                        /* (req_subgroups % (l_sz/sg_sz) - 1) equals to the final subgroup id in a workgroup */
-                        /* Note:  req_subgroups % (l_sz/sg_sz) might be 0 */
-                        if (((req_subgroups % (l_sz/sg_sz)) == 0) || (sg_id == (req_subgroups % (l_sz/sg_sz) - 1))) {
-                            if ((per_rank_items % (sg_sz - 1)) != 0) {
-                                /* FIXME: */
-                                req_workitems = per_rank_items % (sg_sz - 1);
-                                chunk_sz = req_workitems * LS_SZ;    /* LS_SZ bytes per work-item */
-                            }
-                        }
-                    }
-                }
-
-                if (group_id < req_workgroups) {
+                if (work_left > 0) {
                     // step 1: push data to next GPU
                     {
                         offset = base + local_world_rank * chunk_sz;
