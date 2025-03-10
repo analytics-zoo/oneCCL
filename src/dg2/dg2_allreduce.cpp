@@ -23,6 +23,8 @@
 
 #include "dg2_allreduce.hpp"
 
+#define XE_PLUS
+
 using namespace std;
 using namespace sycl;
 
@@ -217,7 +219,8 @@ void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
     pthread_create(&tid, nullptr, thread_func, &world_rank);
 
     size_t buf_size = LL256_BUF_SIZE;
-    host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
+   // host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
+   host_buf = sycl::aligned_alloc_host(getpagesize(), buf_size, q);
 
     host_bufs[world_rank] = host_buf;
 
@@ -316,30 +319,56 @@ static inline void sync_data(char *src, message_t &data, int lid, pattern_t patt
 
 static inline void shuffle_data(message_t &data)
 {
+#if defined(XE_PLUS)
+    __asm__ __volatile__("mov (M1, 1) %0(0, 15)<1> %0(3, 3)<0;1,0>\n"
+                         "mov (M1, 1) %0(1, 15)<1> %0(3, 7)<0;1,0>\n"
+                         "mov (M1, 1) %0(2, 15)<1> %0(3, 11)<0;1,0>\n"
+                         : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
+                         : );
+#else
+
     __asm__ __volatile__("mov (M1, 1) %0(1, 7)<1> %0(6, 3)<0;1,0>\n"
                          "mov (M1, 1) %0(3, 7)<1> %0(6, 7)<0;1,0>\n"
                          "mov (M1, 1) %0(5, 7)<1> %0(7, 3)<0;1,0>\n"
                          : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
                          : );
+#endif
 }
 
 static inline void insert_pattern(message_t &data, pattern_t pattern)
 {
+#if defined(XE_PLUS)
+    __asm__ __volatile__("mov (M1, 1) %0(3, 3)<1> %1(0, 0)<0;1,0>\n"
+                         "mov (M1, 1) %0(3, 7)<1> %1(0, 0)<0;1,0>\n"
+                         "mov (M1, 1) %0(3, 11)<1> %1(0, 0)<0;1,0>\n"
+                         "mov (M1, 1) %0(3, 15)<1> %1(0, 0)<0;1,0>\n"
+                         : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
+                         : "rw"(pattern));
+#else
     __asm__ __volatile__("mov (M1, 1) %0(6, 3)<1> %1(0, 0)<0;1,0>\n"
                          "mov (M1, 1) %0(6, 7)<1> %1(0, 0)<0;1,0>\n"
                          "mov (M1, 1) %0(7, 3)<1> %1(0, 0)<0;1,0>\n"
                          "mov (M1, 1) %0(7, 7)<1> %1(0, 0)<0;1,0>\n"
                          : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
                          : "rw"(pattern));
+#endif
 }
 
 static inline void restore_data(message_t &data)
 {
+#if defined(XE_PLUS)
+    __asm__ __volatile__("mov (M1, 1) %0(3, 3)<1> %0(0, 15)<0;1,0>\n"
+                         "mov (M1, 1) %0(3, 7)<1> %0(1, 15)<0;1,0>\n"
+                         "mov (M1, 1) %0(3, 11)<1> %0(2, 15)<0;1,0>\n"
+                         : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
+                         : );
+#else
     __asm__ __volatile__("mov (M1, 1) %0(6, 3)<1> %0(1, 7)<0;1,0>\n"
                          "mov (M1, 1) %0(6, 7)<1> %0(3, 7)<0;1,0>\n"
                          "mov (M1, 1) %0(7, 3)<1> %0(5, 7)<0;1,0>\n"
                          : "+rw"(reinterpret_cast<typename message_t::vector_t &>(data))
                          : );
+#endif
 }
 #endif
 
