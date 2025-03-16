@@ -373,13 +373,14 @@ static inline void restore_data(message_t &data)
 #endif
 
 static inline void send(char *next, char *src, int lid, int req_workitems,
-                        const ccl_datatype& dtype, int rank, pattern_t pattern)
+                        const ccl_datatype& dtype, int rank, pattern_t pattern,size_t left_size)
 {
     #if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
     message_t data;
     int sz = sizeof(data);
 
-    LscLoadCached(data, src + lid * sz);
+    if (lid * sz < left_size)
+        LscLoadCached(data, src + lid * sz);
 
     shuffle_data(data);
     insert_pattern(data, pattern);
@@ -408,7 +409,7 @@ static inline void recv_reduce_send(char *dst, char *next, char *src, int lid, i
 }
 
 static inline void recv_reduce_copy_send(char *dst, char *next, char *src, int lid, int req_workitems,
-                                         const ccl_datatype& dtype, int rank, pattern_t pattern)
+                                         const ccl_datatype& dtype, int rank, pattern_t pattern,size_t left_size)
 {
     #if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
     message_t data;
@@ -419,7 +420,7 @@ static inline void recv_reduce_copy_send(char *dst, char *next, char *src, int l
     restore_data(data);
 
     data = sum(dst_buf[lid], data, dtype);
-    if (lid < req_workitems)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         LscStoreUnCached(dst + lid * sz, data);
 
     shuffle_data(data);
@@ -429,7 +430,7 @@ static inline void recv_reduce_copy_send(char *dst, char *next, char *src, int l
 }
 
 static inline void recv_copy_send(char *dst, char *next, char *src, int lid, int req_workitems,
-                                  const ccl_datatype& dtype, int rank, pattern_t pattern)
+                                  const ccl_datatype& dtype, int rank, pattern_t pattern,size_t left_size)
 {
     #if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
     message_t data;
@@ -440,13 +441,13 @@ static inline void recv_copy_send(char *dst, char *next, char *src, int lid, int
 
     restore_data(data);
 
-    if (lid < req_workitems)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         LscStoreUnCached(dst + lid * sz, data);
     #endif
 }
 
 static inline void recv(char *dst, char *src, int lid, int req_workitems,
-                        const ccl_datatype& dtype, int rank, pattern_t pattern)
+                        const ccl_datatype& dtype, int rank, pattern_t pattern,size_t left_size)
 {
     #if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
     message_t data;
@@ -457,7 +458,7 @@ static inline void recv(char *dst, char *src, int lid, int req_workitems,
 
     restore_data(data);
 
-    if (lid < req_workitems)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         LscStoreUnCached(dst + lid * sz, data);
     #endif
 }
@@ -587,7 +588,8 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
 
                         char *next = local_peer_bufs[next_rank];
 
-                        send(next + offset_with_pattern, send_buf + offset, sg_lid, req_workitems, dtype, local_world_rank, pattern);
+			size_t left_size = count * dt_sz - offset;
+                        send(next + offset_with_pattern, send_buf + offset, sg_lid, req_workitems, dtype, local_world_rank, pattern,left_size);
                     }
 
                     // step 2: reduce and copy to next GPU
@@ -613,8 +615,9 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
                         char *src = local_host_buf;
                         char *next = local_peer_bufs[next_rank];
 
+                        size_t left_size = count * dt_sz - offset;
                         recv_reduce_copy_send(recv_buf + offset, next + GATHER_BUF_OFFSET + offset_with_pattern, src + offset_with_pattern,
-                                              sg_lid, req_workitems, dtype, local_world_rank, pattern);
+                                              sg_lid, req_workitems, dtype, local_world_rank, pattern,left_size);
                     }
 
                     // step 4: copy to next GPU
@@ -626,8 +629,9 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
                         char *src = local_host_buf;
                         char *next = local_peer_bufs[next_rank];
 
+			size_t left_size = count * dt_sz - offset;
                         recv_copy_send(recv_buf + offset, next + offset_with_pattern, src + offset_with_pattern,
-                                       sg_lid, req_workitems, dtype, local_world_rank, pattern);
+                                       sg_lid, req_workitems, dtype, local_world_rank, pattern,left_size);
                     }
 
                     // step 5: Make final copy from buffer to dest
@@ -638,7 +642,8 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
 
                         char *src = local_host_buf;
 
-                        recv(recv_buf + offset, src + offset_with_pattern, sg_lid, req_workitems, dtype, local_world_rank, pattern);
+			size_t left_size = count * dt_sz - offset;
+                        recv(recv_buf + offset, src + offset_with_pattern, sg_lid, req_workitems, dtype, local_world_rank, pattern,left_size);
                     }
                 }
             }
