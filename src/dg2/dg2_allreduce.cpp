@@ -390,7 +390,7 @@ static inline void send(char *next, char *src, int lid, int req_workitems,
 }
 
 static inline void recv_reduce_send(char *dst, char *next, char *src, int lid, int req_workitems,
-                                    const ccl_datatype& dtype, int rank, pattern_t pattern)
+                                    const ccl_datatype& dtype, int rank, pattern_t pattern,size_t left_size)
 {
     #if defined(__SYCL_DEVICE_ONLY__) && defined(__SPIR__)
     message_t data;
@@ -400,7 +400,8 @@ static inline void recv_reduce_send(char *dst, char *next, char *src, int lid, i
     sync_data(src, data, lid, pattern);
     restore_data(data);
 
-    data = sum(dst_buf[lid], data, dtype);
+    if (lid * sz < left_size)
+        data = sum(dst_buf[lid], data, dtype);
 
     shuffle_data(data);
     insert_pattern(data, pattern);
@@ -419,7 +420,9 @@ static inline void recv_reduce_copy_send(char *dst, char *next, char *src, int l
     sync_data(src, data, lid, pattern);
     restore_data(data);
 
-    data = sum(dst_buf[lid], data, dtype);
+    if (lid * sz < left_size)
+        data = sum(dst_buf[lid], data, dtype);
+
     if ((lid < req_workitems) && (lid * sz < left_size))
         LscStoreUnCached(dst + lid * sz, data);
 
@@ -601,8 +604,9 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
                         char *src = local_host_buf;
                         char *next = local_peer_bufs[next_rank];
 
+			size_t left_size = count * dt_sz - offset;
                         recv_reduce_send(recv_buf + offset, next + offset_with_pattern, src + offset_with_pattern,
-                                         sg_lid, req_workitems, dtype, local_world_rank, pattern);
+                                         sg_lid, req_workitems, dtype, local_world_rank, pattern,left_size);
                     }
 
                     // step 3: reduce this buffer and data, which will produce the final
