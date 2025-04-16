@@ -379,7 +379,7 @@ static inline void send(char *next, char *src, int lid, int req_workitems,
     message_t data;
     int sz = sizeof(data);
 
-    if (lid * sz < left_size)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         LscLoadCached(data, src + lid * sz);
 
     shuffle_data(data);
@@ -400,7 +400,7 @@ static inline void recv_reduce_send(char *dst, char *next, char *src, int lid, i
     sync_data(src, data, lid, pattern);
     restore_data(data);
 
-    if (lid * sz < left_size)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         data = sum(dst_buf[lid], data, dtype);
 
     shuffle_data(data);
@@ -420,7 +420,7 @@ static inline void recv_reduce_copy_send(char *dst, char *next, char *src, int l
     sync_data(src, data, lid, pattern);
     restore_data(data);
 
-    if (lid * sz < left_size)
+    if ((lid < req_workitems) && (lid * sz < left_size))
         data = sum(dst_buf[lid], data, dtype);
 
     if ((lid < req_workitems) && (lid * sz < left_size))
