@@ -56,6 +56,8 @@ using message_t = sycl::vec<uint32_t, 4>;
     __asm__ __volatile__("lsc_load.ugm.uc.uc   (M1, 16)  %0:d32x4  flat[%1]:a64" : "=rw"(reinterpret_cast<typename message_t::vector_t &>(var)) : "rw"(addr) : "memory")
 #define __LscLoadCachedVec(var, addr)   \
     __asm__ __volatile__("lsc_load.ugm.ca.ca   (M1, 16)  %0:d32x4  flat[%1]:a64" : "=rw"(reinterpret_cast<typename message_t::vector_t &>(var)) : "rw"(addr) : "memory")
+#define __LscLoadL3CachedVec(var, addr)   \
+    __asm__ __volatile__("lsc_load.ugm.uc.ca   (M1, 16)  %0:d32x4  flat[%1]:a64" : "=rw"(reinterpret_cast<typename message_t::vector_t &>(var)) : "rw"(addr) : "memory")
 
 #define __LscStoreUnCached(addr, var)  \
     __asm__ __volatile__("lsc_store.ugm.uc.uc  (M1, 16)  flat[%0]:a64  %1:d64" : : "rw"(addr), "rw"(var) : "memory")
@@ -68,6 +70,7 @@ using message_t = sycl::vec<uint32_t, 4>;
 
 #define LscLoadCached     __LscLoadCachedVec
 #define LscLoadUnCached   __LscLoadUnCachedVec
+#define LscLoadL3Cached   __LscLoadL3CachedVec
 #define LscStoreCached    __LscStoreCachedVec
 #define LscStoreUnCached  __LscStoreUnCachedVec
 
@@ -219,8 +222,8 @@ void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
     pthread_create(&tid, nullptr, thread_func, &world_rank);
 
     size_t buf_size = LL256_BUF_SIZE;
-   // host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
-   host_buf = sycl::aligned_alloc_host(getpagesize(), buf_size, q);
+   host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
+   //host_buf = sycl::aligned_alloc_host(getpagesize(), buf_size, q);
 
     host_bufs[world_rank] = host_buf;
 
@@ -310,7 +313,12 @@ static inline void sync_data(char *src, message_t &data, int lid, pattern_t patt
     auto sg = sycl::ext::oneapi::this_work_item::get_sub_group();
 
     do {
+#if defined(XE_PLUS)
+       LscLoadL3Cached(data, src + lid * sz);
+#else
         LscLoadUnCached(data, src + lid * sz);
+#endif
+
     } while (sycl::any_of_group(sg, ((lid ==  3) && (data[3] != pattern)) ||
                                     ((lid ==  7) && (data[3] != pattern)) ||
                                     ((lid == 11) && (data[3] != pattern)) ||
