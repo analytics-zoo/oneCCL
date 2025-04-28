@@ -9,7 +9,7 @@
 #include <drm/drm.h>
 
 #include <mpi.h>
-
+#include <poll.h>
 #include <vector>
 #include <sstream>
 #include <iostream>
@@ -146,7 +146,6 @@ static int cli_sock(char *sock_path)
 
 static void *thread_func(void *arg)
 {
-    fd_set fds;
     int count = 0;
     char sock_path[64];
     int peer_buf_fd = 0;
@@ -154,6 +153,10 @@ static void *thread_func(void *arg)
 
     snprintf(sock_path, sizeof(sock_path), "%s-%d_%d", SOCK_PATH, rank, 0xa770);
     int srv_fd = srv_sock(sock_path);
+    if (srv_fd < 0) {
+         perror("srv_sock failed");
+	 return nullptr;
+    }
 
     //std::cout << "-----> srv_fd of " << sock_path << " : " << srv_fd << "\n";
 
@@ -162,35 +165,30 @@ static void *thread_func(void *arg)
     ze_context_handle_t ze_context = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_context);
     ze_device_handle_t  ze_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_device);
 
-    FD_ZERO(&fds);
-    FD_SET(srv_fd, &fds);
+    struct pollfd pfd = {
+            .fd = srv_fd,
+            .events = POLL_IN,
+            .revents = 0
+    };
     while (++count < world_size) {
-        int ret = select(srv_fd + 1, &fds, NULL, NULL, NULL);
-        switch (ret) {
-        case 1:
-            {
-                int peer_rank;
-                void *peer_buf;
+        int ret = poll(&pfd, 1, -1);
+        if (ret <= 0) {
+	   std::cerr << "poll failed: " << strerror(errno) << "\n";
+	   break;
+	}
 
-                int conn_fd = accept(srv_fd, NULL, 0);
-                ccl::utils::recvmsg_fd(conn_fd, &peer_buf_fd, &peer_rank, sizeof(peer_rank));
+        if (pfd.revents & POLL_IN) {
+           int peer_rank;
+	   void *peer_buf = nullptr;
 
-                ze_ipc_mem_handle_t ipc_handle_peer_buf = get_handle_from_fd(peer_buf_fd);
-                zeMemOpenIpcHandle(ze_context, ze_device, ipc_handle_peer_buf, ZE_IPC_MEMORY_FLAG_BIAS_CACHED /* cached allocation */, &peer_buf);
+           int conn_fd = accept(srv_fd, NULL, 0);
+           ccl::utils::recvmsg_fd(conn_fd, &peer_buf_fd, &peer_rank, sizeof(peer_rank));
+           ze_ipc_mem_handle_t ipc_handle_peer_buf = get_handle_from_fd(peer_buf_fd);
+           zeMemOpenIpcHandle(ze_context, ze_device, ipc_handle_peer_buf, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_buf);
 
-                peer_bufs[peer_rank] = peer_buf;
-                //printf("<------------- rank: %d, peer_bufs[%d]: %p\n", world_rank, peer_rank, peer_bufs[peer_rank]);
-
-                if (conn_fd > 0) close(conn_fd);
-
-                break;
-            }
-        case 0:
-        case -1:
-            std::cout << "srv_fd select() failed" << "\n";
-            break;
-        default:
-            break;
+           peer_bufs[peer_rank] = peer_buf;
+           //printf("<------------- rank: %d, peer_bufs[%d]: %p\n", world_rank, peer_rank, peer_bufs[peer_rank]);
+           if (conn_fd > 0) close(conn_fd);
         }
     }
 
