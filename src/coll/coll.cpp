@@ -131,14 +131,16 @@ ccl_request* exec_single_rank_coll(const ccl_coll_param& param) {
     return nullptr;
 }
 
-static ccl_request* ccl_dg2_allreduce_impl(ccl_coll_param& param, const ccl_coll_attr& in_attr)
+static ccl::event ccl_dg2_allreduce(ccl_selector_param& param,const void* send_buf,void* recv_buf,bool& done)
 {
-    dg2_init(param);
+    ccl::event ret;
+    dg2_init(param,send_buf,recv_buf);
 
-    dg2_allreduce(param.send_bufs[0], param.recv_bufs[0],
+    ret = dg2_allreduce(send_buf, recv_buf,
                   param.count, param.dtype, param.reduction, param.comm);
 
-    return nullptr;
+    done = true;
+    return ret;
 }
 
 /* param is not const because param.comm can be updated for unordered colls */
@@ -1160,7 +1162,16 @@ ccl::event ccl_allreduce(const void* send_buf,
         ccl_stream* op_stream = const_cast<ccl_stream*>(stream);
         auto q = op_stream->get_native_stream();
         auto dummy_unused_attr = ccl::create_operation_attr<ccl::allreduce_attr>();
-        ccl::event ccl_event = allreduce_sycl(q,
+
+        ccl::event ccl_event;
+        std::shared_ptr<atl_base_comm> atl_comm = comm->get_node_comm().get()->get_atl_comm();
+
+	if (ccl::global_data::env().enable_dg2_allreduce
+            && (atl_comm->get_size() >= 2) && (atl_comm->get_size() <= DG2_NUM)
+            && ((dtype == ccl::datatype::float16) || (dtype == ccl::datatype::float32) || (dtype == ccl::datatype::int32))) {
+            ccl_event = ccl_dg2_allreduce(param,send_buf,recv_buf,done);
+         } else {
+             ccl_event = allreduce_sycl(q,
                                               send_buf,
                                               recv_buf,
                                               count,
@@ -1171,6 +1182,8 @@ ccl::event ccl_allreduce(const void* send_buf,
                                               dummy_unused_attr,
                                               deps,
                                               done);
+        }
+
         if (done) {
             if (ccl::global_data::env().enable_op_sync) {
                 ccl_event.wait();
@@ -1198,16 +1211,7 @@ ccl_request* ccl_allreduce_impl(const void* send_buf,
     ccl_coll_param param = ccl_coll_param::create_allreduce_param(
         send_buf, recv_buf, count, dtype, reduction, attr, comm, stream, deps);
 
-    std::shared_ptr<atl_base_comm> atl_comm = comm->get_node_comm().get()->get_atl_comm();
-
-    if (ccl::global_data::env().enable_dg2_allreduce
-        && (atl_comm->get_size() >= 2) && (atl_comm->get_size() <= DG2_NUM)
-        && ((dtype == ccl::datatype::float16) || (dtype == ccl::datatype::float32) || (dtype == ccl::datatype::int32))) {
-        req = ccl_dg2_allreduce_impl(param, attr);
-    }
-    else {
-        req = ccl_coll_create(param, attr);
-    }
+    req = ccl_coll_create(param, attr);
 
     LOG_DEBUG("coll ", ccl_coll_type_to_str(param.ctype), " created, req ", req, " count ", count);
 

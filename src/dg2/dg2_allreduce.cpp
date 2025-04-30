@@ -205,7 +205,7 @@ static void *thread_func(void *arg)
     return nullptr;
 }
 
-void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
+void create_shared_buf(const void *send_buf, void *recv_buf, size_t byte_count)
 {
     bool is_p2p = ccl::global_data::env().enable_dg2_usm ? false : true;
     printf("-----> current rank: %d, world size: %d, byte_count: %lu,is_p2p:%d\n", world_rank, world_size, byte_count,is_p2p);
@@ -251,15 +251,16 @@ void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
     pthread_join(tid, nullptr);
 }
 
-void dg2_init(ccl_coll_param &param)
+void dg2_init(ccl_selector_param &param,const void* send_buf,void* recv_buf)
 {
     size_t byte_count = param.count * param.dtype.size();
 
     ccl_stream *stream = param.stream;
     q = stream->get_native_stream();
     // init recv_buf in advance to warm up GPU
-    if (param.send_bufs[0] != param.recv_bufs[0])
-        q.memcpy(param.recv_bufs[0], param.send_bufs[0], byte_count);
+    if (send_buf != recv_buf)
+        q.memcpy(recv_buf, send_buf, byte_count);
+
 
     /* init already */
     if (world_size != 0)
@@ -270,7 +271,7 @@ void dg2_init(ccl_coll_param &param)
     world_size = atl_comm->get_size();
     world_rank = atl_comm->get_rank();
 
-    create_shared_buf(param.send_bufs[0], param.recv_bufs[0], byte_count);
+    create_shared_buf(send_buf, recv_buf, byte_count);
 }
 
 
@@ -479,7 +480,7 @@ static inline void recv(char *dst, char *src, int lid, int req_workitems,
 ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
                                const ccl_datatype &dtype, ccl::reduction reduction, ccl_comm *comm)
 {
-    ccl::event ret;
+//    ccl::event ret;
 
     //std::cout << "enter " << __func__ << ", rank: " << world_rank <<  ", count: " << count << std::endl;
 
@@ -507,7 +508,7 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
     /* To avoid pattern not changed when "iters" is 1 */
     pattern_t pattern_prefix = ++pattern_counter << 16;
 
-    q.submit([&](auto& h) {
+    auto e = q.submit([&](auto& h) {
         using namespace sycl::ext::intel::experimental::esimd;
 
         int local_world_rank = world_rank;
@@ -663,7 +664,7 @@ ccl::event dg2_ll256_allreduce(const void *src, void *dst, size_t count,
         });
     });
 
-    return ret;
+    return ccl::event::create_from_native(e);
 }
 
 ccl::event dg2_allreduce(const void *src, void *dst, size_t count,
@@ -671,7 +672,7 @@ ccl::event dg2_allreduce(const void *src, void *dst, size_t count,
 {
     ccl::event ret;
 
-    dg2_ll256_allreduce(src, dst, count, dtype, reduction, comm);
+    ret = dg2_ll256_allreduce(src, dst, count, dtype, reduction, comm);
 
     return ret;
 }
