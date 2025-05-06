@@ -469,6 +469,7 @@ void env_data::parse() {
     p.env_2_enum(CCL_STAGING_BUFFER, staging_buffer_names, staging_buffer);
     p.env_2_type(CCL_OP_SYNC, enable_op_sync);
     p.env_2_type(CCL_DG2_ALLREDUCE, enable_dg2_allreduce);
+    p.env_2_type(CCL_DG2_USM, enable_dg2_usm);
 
     p.env_2_type(CCL_CHUNK_COUNT, chunk_count);
     CCL_THROW_IF_NOT(chunk_count >= 1, "incorrect ", CCL_CHUNK_COUNT, " ", chunk_count);
