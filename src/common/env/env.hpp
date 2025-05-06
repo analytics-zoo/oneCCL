@@ -178,6 +178,7 @@ public:
     ccl_staging_buffer staging_buffer;
     bool enable_op_sync;
     int enable_dg2_allreduce;
+    int enable_dg2_usm;
 
     size_t chunk_count;
     size_t min_chunk_size;

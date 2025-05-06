@@ -202,7 +202,8 @@ static void *thread_func(void *arg)
 
 void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
 {
-    printf("-----> current rank: %d, world size: %d, byte_count: %lu\n", world_rank, world_size, byte_count);
+    bool is_p2p = ccl::global_data::env().enable_dg2_usm ? false : true;
+    printf("-----> current rank: %d, world size: %d, byte_count: %lu,is_p2p:%d\n", world_rank, world_size, byte_count,is_p2p);
 
     pthread_t tid;
     char sock_path[64];
@@ -215,7 +216,10 @@ void create_shared_buf(void *send_buf, void *recv_buf, size_t byte_count)
     pthread_create(&tid, nullptr, thread_func, &world_rank);
 
     size_t buf_size = LL256_BUF_SIZE;
-    host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
+    if(is_p2p)
+        host_buf = sycl::aligned_alloc_device(getpagesize(), buf_size, q);
+    else
+        host_buf = sycl::aligned_alloc_host(getpagesize(), buf_size, q);
 
     host_bufs[world_rank] = host_buf;
 
