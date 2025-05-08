@@ -208,7 +208,7 @@ static void *thread_func(void *arg)
 void create_shared_buf(const void *send_buf, void *recv_buf, size_t byte_count)
 {
     bool is_p2p = ccl::global_data::env().enable_dg2_usm ? false : true;
-    printf("-----> current rank: %d, world size: %d, byte_count: %lu,is_p2p:%d\n", world_rank, world_size, byte_count,is_p2p);
+    LOG_WARN("-----> current rank:",world_rank,", world size:",world_size,",byte_count:",byte_count,",is_p2p:",is_p2p);
 
     pthread_t tid;
     char sock_path[64];
