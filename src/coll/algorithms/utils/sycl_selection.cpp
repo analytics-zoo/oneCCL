@@ -64,8 +64,11 @@ bool can_use_sycl_kernels(const ccl_selector_param& param) {
     RETURN_FALSE_IF(ccl::global_data::env().enable_ze_cache == 0, "ze cache is not enabled");
     RETURN_FALSE_IF(!param.comm->get_topo_manager().has_p2p_access(),
                     "no p2p access between devices");
-    RETURN_FALSE_IF(!param.comm->get_topo_manager().has_all_vertices_connected(),
+    if (param.ctype != ccl_coll_allreduce || !ccl::global_data::env().enable_dg2_allreduce)
+    {
+    	   RETURN_FALSE_IF(!param.comm->get_topo_manager().has_all_vertices_connected(),
                     "no connection between vertices");
+    }
     RETURN_FALSE_IF(!param.comm->get_topo_manager().has_same_ppn(),
                     "ppn is not the same among the nodes");
     RETURN_FALSE_IF(!param.comm->get_topo_manager().has_same_domains(),
@@ -144,7 +147,8 @@ bool can_use_sycl_kernels(const ccl_selector_param& param) {
     }
 
     if (checkers::is_unknown_device_family(param)) {
-        LOG_WARN("Applying sycl-kernels, but device family is not recognized");
+	    if (!ccl::global_data::env().enable_dg2_allreduce)
+        	LOG_WARN("Applying sycl-kernels, but device family is not recognized");
     }
 
 #endif // CCL_ENABLE_SYCL
