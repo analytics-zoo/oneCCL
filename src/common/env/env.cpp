@@ -197,7 +197,7 @@ env_data::env_data()
 
           enable_sycl_kernels(1),
 
-          sycl_ccl_barrier(0),
+          sycl_ccl_barrier(1),
           sycl_kernel_sync(1),
           sycl_single_node_algorithm(1),
           sycl_auto_use_tmp_buf(1),
