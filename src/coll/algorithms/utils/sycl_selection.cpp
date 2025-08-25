@@ -104,7 +104,7 @@ bool can_use_sycl_kernels(const ccl_selector_param& param) {
 
     if (param.ctype != ccl_coll_allreduce && param.ctype != ccl_coll_allgatherv &&
         param.ctype != ccl_coll_reduce_scatter && param.ctype != ccl_coll_recv &&
-        param.ctype != ccl_coll_send) {
+        param.ctype != ccl_coll_send && param.ctype != ccl_coll_alltoall) {
         RETURN_FALSE_IF(!param.comm->get_topo_manager().has_p2p_access(),
                         "no p2p access between devices");
     }
