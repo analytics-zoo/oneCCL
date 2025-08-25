@@ -406,7 +406,8 @@ ccl::event alltoall_sycl(sycl::queue& q,
 
     if (is_single_node) {
 
-	if (is_arc_card(ccl::ze::get_device_family(op_stream->get_ze_device()))) {
+	if (is_arc_card(ccl::ze::get_device_family(op_stream->get_ze_device())) &&
+                        ccl::global_data::env().sycl_enable_arc_alltoall_ll) {
             ccl::event e;
             uint32_t world = comm->get_node_comm()->size();
 	    size_t dt_sz = ccl::global_data::get().dtypes->get(dtype).size();

@@ -246,6 +246,8 @@ public:
     size_t sycl_allgatherv_scaleout_threshold;
     size_t sycl_allgatherv_ll_threshold;
 
+    bool sycl_enable_arc_alltoall_ll;
+
     bool enable_sycl_kernels;
 
     bool sycl_ccl_barrier;
